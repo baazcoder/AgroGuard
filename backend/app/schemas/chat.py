@@ -8,6 +8,10 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     history: Optional[List[ChatMessage]] = []
+    language: Optional[str] = "English"
+    farm_id: Optional[int] = None
+    field_id: Optional[int] = None
+
 
 class ChatResponse(BaseModel):
     reply: str

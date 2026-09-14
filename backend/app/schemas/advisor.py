@@ -6,6 +6,7 @@ class AdvisorRequest(BaseModel):
     season: str # Kharif, Rabi, Zaid
     soil_type: str # Alluvial, Black, Red, Clay, Loamy
     water_availability: str # Abundant, Irrigation, Rainfed / Limited
+    language: Optional[str] = "English"
 
 class CropRecommendation(BaseModel):
     crop_name: str

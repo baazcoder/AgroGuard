@@ -17,7 +17,8 @@ async def recommend_crops(req: AdvisorRequest):
         region=req.region,
         season=req.season,
         soil_type=req.soil_type,
-        water_availability=req.water_availability
+        water_availability=req.water_availability,
+        language=req.language
     )
     
     if ai_data and "recommendations" in ai_data:
