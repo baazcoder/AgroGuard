@@ -1,5 +1,9 @@
 from fastapi import APIRouter
 from app.schemas.advisor import AdvisorRequest, AdvisorResponse, CropRecommendation
+from app.services.gemini_service import generate_crop_recommendations
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["Crop Advisor"])
 
@@ -7,10 +11,30 @@ router = APIRouter(prefix="/api", tags=["Crop Advisor"])
 async def recommend_crops(req: AdvisorRequest):
     """
     Provides intelligent crop recommendations based on location, season, soil, and water availability.
+    Uses Gemini AI for dynamic generation, falls back to static rules if API is unavailable.
     """
-    # High-quality structured recommendation logic based on region & season
-    recommendations = []
+    ai_data = await generate_crop_recommendations(
+        region=req.region,
+        season=req.season,
+        soil_type=req.soil_type,
+        water_availability=req.water_availability
+    )
     
+    if ai_data and "recommendations" in ai_data:
+        try:
+            recs = [CropRecommendation(**rec) for rec in ai_data["recommendations"]]
+            return AdvisorResponse(
+                region=req.region,
+                season=req.season,
+                soil_type=req.soil_type,
+                recommendations=recs,
+                ai_reasoning=ai_data.get("ai_reasoning", "AI dynamically generated these recommendations based on your unique farm parameters.")
+            )
+        except Exception as e:
+            logger.error(f"Error parsing Gemini advisor response: {e}")
+
+    # Fallback High-quality structured recommendation logic
+    recommendations = []
     if req.season.lower() in ["rabi", "winter"]:
         recommendations = [
             CropRecommendation(
