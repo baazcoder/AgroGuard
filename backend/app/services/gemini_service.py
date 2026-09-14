@@ -2,6 +2,7 @@
 
 import json
 import logging
+import asyncio
 from typing import Optional, Any, List, Union
 
 from google import genai
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_MODEL = getattr(
     settings,
     "GEMINI_MODEL",
-    "gemini-3.6-flash"
+    "gemini-2.5-flash"
 )
 
 SUPPORTED_LANGUAGES = {
@@ -197,14 +198,17 @@ Respond in {selected_language}.
         )
 
         # Async non-blocking call via client.aio
-        response = await client.aio.models.generate_content(
-            model=DEFAULT_MODEL,
-            contents=[user_prompt, image_part],
-            config=types.GenerateContentConfig(
-                system_instruction=DIAGNOSIS_SYSTEM_PROMPT,
-                temperature=0.1,
-                response_mime_type="application/json",
+        response = await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=DEFAULT_MODEL,
+                contents=[user_prompt, image_part],
+                config=types.GenerateContentConfig(
+                    system_instruction=DIAGNOSIS_SYSTEM_PROMPT,
+                    temperature=0.1,
+                    response_mime_type="application/json",
+                ),
             ),
+            timeout=15.0
         )
 
         if not response or not response.text:
@@ -285,20 +289,25 @@ def _build_diagnosis_result(data: dict[str, Any], language: str) -> DiagnosisRes
 # ============================================================
 
 CHAT_SYSTEM_PROMPT = """
-You are AgroGuard, an AI agricultural assistant.
+You are AgroGuard, an AI agricultural advisor that understands the farmer's active farm.
 
-Your goal is to help farmers make practical decisions using the
-information supplied by the application.
+Your goal is to help the farmer make practical decisions using the real application data provided in the Active Farm Context.
 
-You can discuss crop planning, plant diseases, pests, irrigation,
-soil health, weather-aware farming, market considerations, and sustainable practices.
-
-IMPORTANT:
-- Never pretend to have live weather or market prices unless provided in context.
-- Never invent pesticide dosages or chemical concentrations.
-- Direct farmers to local product labels and KVK/extension services for chemical controls.
-- Answer in the farmer's requested language.
-- Keep explanations simple, actionable, and practical.
+CRITICAL SAFETY & TRUTH DIRECTIVES:
+1. NEVER INVENT OR FABRICATE DATA:
+   - Do NOT invent current weather, temperature, humidity, rainfall, or weather alerts.
+   - Do NOT invent mandi commodity prices, market trends, or selling prices.
+   - Do NOT invent farm area, farm boundary, crops, fields, soil type, irrigation type, disease diagnoses, yield, or profit.
+2. MISSING DATA HANDLING:
+   - If the user asks about weather, market prices, field details, or disease observations, and that data is missing, null, or marked as unavailable in the provided Active Farm Context, you MUST explicitly state that the information is currently unavailable.
+3. CONTEXTUAL REASONING:
+   - When asked "What is my farm area?" -> cite the exact total area (acres/hectares) from the active_farm object in context.
+   - When asked "What should I do today?" -> synthesize recommendations from current_actions, active farm weather, and crop disease observations.
+   - When asked "What is the weather?" -> answer using the actual weather object for the active farm.
+   - When asked "Where should I sell my wheat?" -> use the proximity-ranked nearby_mandis list provided in context.
+   - When asked "What should I do with Field X?" -> answer using selected_field or the matching field object from the fields list.
+4. Direct farmers to local product labels and KVK / Krishi Vigyan Kendra extension services for chemical pesticide/fungicide applications.
+5. Respond directly in the farmer's requested language in a warm, professional, clear manner.
 """
 
 
@@ -344,10 +353,10 @@ async def generate_chat_response(
     conversation_parts.append(f"USER: {prompt}")
     conversation = "\n\n".join(conversation_parts)
 
-    context_text = json.dumps(farmer_context, ensure_ascii=False, indent=2)
+    context_text = json.dumps(farmer_context, ensure_ascii=False, indent=2, default=str)
 
     full_prompt = f"""
-Farmer profile:
+STRUCTURED ACTIVE FARM CONTEXT (Use strictly these facts without fabricating missing numbers):
 {context_text}
 
 Preferred language: {selected_language}
@@ -359,13 +368,16 @@ Respond directly to the user's latest query in {selected_language}.
 """
 
     try:
-        response = await client.aio.models.generate_content(
-            model=DEFAULT_MODEL,
-            contents=[full_prompt],
-            config=types.GenerateContentConfig(
-                system_instruction=CHAT_SYSTEM_PROMPT,
-                temperature=0.4,
+        response = await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=DEFAULT_MODEL,
+                contents=[full_prompt],
+                config=types.GenerateContentConfig(
+                    system_instruction=CHAT_SYSTEM_PROMPT,
+                    temperature=0.3,
+                ),
             ),
+            timeout=12.0
         )
 
         if not response or not response.text:
@@ -375,7 +387,8 @@ Respond directly to the user's latest query in {selected_language}.
 
     except Exception as exc:
         logger.exception("AgroGuard chat failed: %s", exc)
-        return "I'm temporarily unable to answer. Please try again in a moment."
+        return "I'm temporarily unable to answer due to a network connection issue. Please try again in a moment."
+
 
 
 # ============================================================
@@ -449,14 +462,17 @@ Return JSON using this format:
 """
 
     try:
-        response = await client.aio.models.generate_content(
-            model=DEFAULT_MODEL,
-            contents=[user_prompt],
-            config=types.GenerateContentConfig(
-                system_instruction=CROP_RECOMMENDATION_PROMPT,
-                temperature=0.2,
-                response_mime_type="application/json",
+        response = await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=DEFAULT_MODEL,
+                contents=[user_prompt],
+                config=types.GenerateContentConfig(
+                    system_instruction=CROP_RECOMMENDATION_PROMPT,
+                    temperature=0.2,
+                    response_mime_type="application/json",
+                ),
             ),
+            timeout=12.0
         )
 
         if not response or not response.text:
@@ -473,45 +489,110 @@ Return JSON using this format:
 
 
 # ============================================================
-# FARM ACTION PLAN
+# FARM ACTION PLAN (DECISION ENGINE)
 # ============================================================
+
+ACTION_PLAN_SYSTEM_PROMPT = """
+You are AgroGuard's Master Agricultural Decision Engine.
+Your job is to synthesize all available farm data (Farmer Profile, Active Farm, Fields, Crops, Crop Stages, Leaf Pathology, Weather Forecast, Mandi Market Rates, Soil, Irrigation, and Economics) into a structured daily farm action plan.
+
+SAFETY & TRUTH DIRECTIVES:
+1. NEVER invent current weather, market prices, chemical/pesticide dosages, fertilizer quantities, yield, or profit guarantees.
+2. Every recommended action must have a clear priority ("high", "medium", or "low"), action, reason, timing ("Today", "Next 3 Days", "Next 7 Days"), affected_field (e.g. "Field 2 (Wheat)" or "All Fields"), and supporting_data_source (e.g. "Crop Health Pathology & Rain Forecast").
+3. High priority actions should address urgent weather risks (e.g. rain wash-off, wind spray drift) or severe crop diseases.
+4. "avoid" list should warn against mistakes based on real weather and field data.
+5. Respond directly in the farmer's requested language.
+"""
 
 async def generate_farm_action_plan(
     farmer_context: dict[str, Any],
     disease_result: Optional[dict[str, Any]] = None,
     weather_data: Optional[dict[str, Any]] = None,
     market_data: Optional[dict[str, Any]] = None,
+    economics_data: Optional[dict[str, Any]] = None,
     language: Optional[str] = "English",
 ) -> Optional[dict[str, Any]]:
     """
-    Generate a personalized farm action plan.
+    Generate a personalized, structured farm action plan with explicit priority ratings and field-level contexts.
     """
     client = _get_client()
+    selected_language = _normalize_language(language)
+
     if client is None:
         return None
 
-    selected_language = _normalize_language(language)
+    user_prompt = f"""
+STRUCTURED ACTIVE FARM CONTEXT:
+{json.dumps(farmer_context, ensure_ascii=False, indent=2, default=str)}
 
-    prompt = f"""
-Create a practical farm action plan in {selected_language}.
+CROP HEALTH DIAGNOSIS HISTORY:
+{json.dumps(disease_result or {}, ensure_ascii=False, indent=2, default=str)}
 
-FARMER: {json.dumps(farmer_context, ensure_ascii=False, indent=2, default=str)}
-CROP HEALTH: {json.dumps(disease_result or {}, ensure_ascii=False, indent=2, default=str)}
-WEATHER: {json.dumps(weather_data or {}, ensure_ascii=False, indent=2, default=str)}
-MARKET: {json.dumps(market_data or {}, ensure_ascii=False, indent=2, default=str)}
+WEATHER INTELLIGENCE:
+{json.dumps(weather_data or {}, ensure_ascii=False, indent=2, default=str)}
 
-Return valid JSON with keys: "today", "next_3_days", "next_7_days", "monitor", "avoid", "expert_help_when".
-Each key should map to a list of strings.
+MANDI MARKET DATA:
+{json.dumps(market_data or {}, ensure_ascii=False, indent=2, default=str)}
+
+FARM ECONOMICS:
+{json.dumps(economics_data or {}, ensure_ascii=False, indent=2, default=str)}
+
+Respond in {selected_language} JSON adhering strictly to this schema:
+{{
+  "today_actions": [
+    {{
+      "priority": "high",
+      "action": "Description of urgent action",
+      "reason": "Clear agricultural reason based on active farm data",
+      "timing": "Today",
+      "affected_field": "Field 2 (Wheat) or All Fields",
+      "source_context": "Crop Health & Weather",
+      "supporting_data_source": "Open-Meteo & Leaf Scan",
+      "confidence": "High"
+    }}
+  ],
+  "next_3_days": [
+    {{
+      "priority": "medium",
+      "action": "Description of action",
+      "reason": "Agricultural rationale",
+      "timing": "Next 3 Days",
+      "affected_field": "Field 1 (Rice)",
+      "source_context": "Irrigation & Weather",
+      "supporting_data_source": "Weather Forecast",
+      "confidence": "High"
+    }}
+  ],
+  "next_7_days": [
+    {{
+      "priority": "low",
+      "action": "Description of general monitoring or selling advice",
+      "reason": "Rationale based on mandi trends",
+      "timing": "Next 7 Days",
+      "affected_field": "All Fields",
+      "source_context": "Mandi Rates",
+      "supporting_data_source": "AGMARKNET Rates",
+      "confidence": "High"
+    }}
+  ],
+  "watch_for": ["List of warning signs to monitor"],
+  "avoid": ["List of actions to avoid based on weather/data"],
+  "expert_help_when": ["Situations requiring local KVK expert"]
+}}
 """
 
     try:
-        response = await client.aio.models.generate_content(
-            model=DEFAULT_MODEL,
-            contents=[prompt],
-            config=types.GenerateContentConfig(
-                temperature=0.25,
-                response_mime_type="application/json",
+        response = await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=DEFAULT_MODEL,
+                contents=[user_prompt],
+                config=types.GenerateContentConfig(
+                    system_instruction=ACTION_PLAN_SYSTEM_PROMPT,
+                    temperature=0.2,
+                    response_mime_type="application/json",
+                ),
             ),
+            timeout=12.0
         )
 
         if not response or not response.text:
@@ -523,6 +604,97 @@ Each key should map to a list of strings.
     except Exception as exc:
         logger.exception("Farm action plan generation failed: %s", exc)
         return None
+
+
+
+# ============================================================
+# MARKET INTELLIGENCE INSIGHT
+# ============================================================
+
+MARKET_INSIGHT_SYSTEM_PROMPT = """
+You are AgroGuard's expert agricultural market analyst.
+Your task is to explain supplied mandi market prices, 7-day price trends, and nearby market comparisons to farmers.
+
+CRITICAL SAFETY & TRUTH DIRECTIVES:
+1. NEVER invent, modify, or fabricate commodity prices. Use strictly the numbers provided in the input context.
+2. NEVER say "Sell today for guaranteed profit" or make absolute price predictions.
+3. ALWAYS use cautious, non-guaranteed phrases such as "Based on available price trends...", "Historical data indicates...", or "Consider monitoring local mandi arrivals...".
+4. Highlight 7-day price changes, compare nearby mandis if price differences exist, and mention practical considerations (such as moisture level, transport costs, and storage availability).
+5. Respond directly in the farmer's requested language. Keep explanations simple, clear, and actionable.
+"""
+
+async def generate_market_insight(
+    market_items: List[Any],
+    farm_context: Optional[dict[str, Any]] = None,
+    language: Optional[str] = "English",
+) -> str:
+    """
+    Generate AI market intelligence explanation based strictly on supplied market data.
+    """
+    client = _get_client()
+    selected_language = _normalize_language(language)
+    context = farm_context or {}
+
+    fallback_insight = (
+        "Based on available price trends, commodity prices are being monitored across nearby mandi markets. "
+        "Farmers are advised to compare nearby market rates, account for transport and storage costs, "
+        "and track daily mandi arrivals before deciding when to sell."
+    )
+
+    if client is None or not market_items:
+        return fallback_insight
+
+    # Format market data cleanly for Gemini
+    formatted_items = []
+    for item in market_items:
+        item_dict = item.model_dump() if hasattr(item, "model_dump") else (item if isinstance(item, dict) else {})
+        formatted_items.append({
+            "crop": item_dict.get("crop"),
+            "mandi": item_dict.get("mandi"),
+            "state": item_dict.get("state"),
+            "district": item_dict.get("district"),
+            "current_modal_price": item_dict.get("modal_price"),
+            "price_range": f"₹{item_dict.get('min_price')} - ₹{item_dict.get('max_price')}",
+            "trend_display": item_dict.get("trend_display"),
+            "seven_day_change_percent": f"{item_dict.get('seven_day_change_pct', 0.0):+.1f}%",
+            "best_nearby_market": item_dict.get("best_nearby_market"),
+            "data_source": item_dict.get("data_source"),
+            "date": item_dict.get("date")
+        })
+
+    prompt = f"""
+Farmer Context:
+{json.dumps(context, ensure_ascii=False, indent=2, default=str)}
+
+Supplied Market Data (DO NOT alter any price values):
+{json.dumps(formatted_items, ensure_ascii=False, indent=2, default=str)}
+
+Requested Language: {selected_language}
+
+Explain the supplied market trend and give practical selling considerations in {selected_language}. Remind the farmer that market prices fluctuate based on quality and local arrivals.
+"""
+
+    try:
+        response = await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=DEFAULT_MODEL,
+                contents=[prompt],
+                config=types.GenerateContentConfig(
+                    system_instruction=MARKET_INSIGHT_SYSTEM_PROMPT,
+                    temperature=0.3,
+                ),
+            ),
+            timeout=10.0
+        )
+
+        if not response or not response.text:
+            return fallback_insight
+
+        return response.text.strip()
+
+    except Exception as exc:
+        logger.exception("Market insight generation failed: %s", exc)
+        return fallback_insight
 
 
 # ============================================================

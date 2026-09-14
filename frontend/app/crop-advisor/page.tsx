@@ -5,8 +5,10 @@ import {
   Compass, Sparkles, Sprout, Droplets, Calendar, Layers, ArrowRight, CheckCircle2, RefreshCw 
 } from "lucide-react";
 import { fetchCropAdvice, AdvisorResponse } from "@/lib/api";
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function CropAdvisorPage() {
+  const { t, getBackendLanguageName } = useLanguage();
   const [region, setRegion] = useState("North India / Punjab");
   const [season, setSeason] = useState("Rabi");
   const [soilType, setSoilType] = useState("Loamy");
@@ -21,11 +23,13 @@ export default function CropAdvisorPage() {
     setLoading(true);
     setError(null);
     try {
+      const backendLang = getBackendLanguageName();
       const res = await fetchCropAdvice({
         region,
         season,
         soil_type: soilType,
         water_availability: water,
+        language: backendLang,
       });
       setAdvice(res);
     } catch (err: any) {
@@ -42,13 +46,13 @@ export default function CropAdvisorPage() {
       <div className="text-center space-y-3">
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-semibold">
           <Compass className="w-4 h-4" />
-          <span>AI Agricultural Crop Planning</span>
+          <span>{t.advisor.badge}</span>
         </div>
         <h1 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">
-          What Should I <span className="bg-gradient-to-r from-blue-400 to-emerald-300 bg-clip-text text-transparent">Grow Next?</span>
+          {t.advisor.title}
         </h1>
         <p className="text-sm sm:text-base text-slate-400 max-w-2xl mx-auto">
-          Input your farm conditions to receive AI-curated crop recommendations that maximize yield profit and preserve soil health.
+          {t.advisor.subtitle}
         </p>
       </div>
 
@@ -60,7 +64,7 @@ export default function CropAdvisorPage() {
           <div>
             <label className="text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
               <Compass className="w-3.5 h-3.5 text-blue-400" />
-              <span>Region / State</span>
+              <span>{t.advisor.region}</span>
             </label>
             <select
               value={region}
@@ -80,7 +84,7 @@ export default function CropAdvisorPage() {
           <div>
             <label className="text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Target Season</span>
+              <span>{t.advisor.season}</span>
             </label>
             <select
               value={season}
@@ -97,7 +101,7 @@ export default function CropAdvisorPage() {
           <div>
             <label className="text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
               <Layers className="w-3.5 h-3.5 text-amber-400" />
-              <span>Soil Texture</span>
+              <span>{t.advisor.soilType}</span>
             </label>
             <select
               value={soilType}
@@ -115,7 +119,7 @@ export default function CropAdvisorPage() {
           <div>
             <label className="text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
               <Droplets className="w-3.5 h-3.5 text-teal-400" />
-              <span>Water Access</span>
+              <span>{t.advisor.water}</span>
             </label>
             <select
               value={water}
@@ -138,12 +142,12 @@ export default function CropAdvisorPage() {
           {loading ? (
             <>
               <RefreshCw className="w-5 h-5 animate-spin" />
-              <span>Analyzing Regional Agronomics...</span>
+              <span>{t.common.loading}</span>
             </>
           ) : (
             <>
               <Sparkles className="w-5 h-5" />
-              <span>Generate AI Crop Plan</span>
+              <span>{t.advisor.submit}</span>
             </>
           )}
         </button>
@@ -191,7 +195,7 @@ export default function CropAdvisorPage() {
 
                   <div className="space-y-2 text-xs text-slate-300 pt-2 border-t border-slate-800">
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Harvest Duration:</span>
+                      <span className="text-slate-400">Duration:</span>
                       <span className="font-semibold text-white">{crop.expected_duration}</span>
                     </div>
                     <div className="flex items-center justify-between">

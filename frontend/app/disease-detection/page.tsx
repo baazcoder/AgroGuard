@@ -7,6 +7,8 @@ import {
   CheckCircle2, AlertTriangle, RefreshCw, Info, Leaf, Stethoscope, ShieldCheck, Download
 } from "lucide-react";
 import { analyzeCropImage, DiagnosisResult } from "@/lib/api";
+import { useLanguage } from "@/context/LanguageContext";
+import { AuthGuard } from "@/components/AuthGuard";
 
 // Sample Demo Images as Data URLs for instant Hackathon Testing
 const DEMO_SAMPLES = [
@@ -24,7 +26,8 @@ const DEMO_SAMPLES = [
   }
 ];
 
-export default function DiseaseDetectionPage() {
+function DiseaseDetectionContent() {
+  const { t, getBackendLanguageName } = useLanguage();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -94,7 +97,6 @@ export default function DiseaseDetectionPage() {
       handleFileChange(file);
     } catch (err) {
       console.error("Failed to load sample image:", err);
-      // Fallback
       setPreviewUrl(url);
       setSelectedFile(new File(["dummy"], "sample_crop.jpg", { type: "image/jpeg" }));
     }
@@ -108,7 +110,6 @@ export default function DiseaseDetectionPage() {
     setResult(null);
     setAnalysisStep(0);
 
-    // Simulate step sequence for polished UX demo
     const stepInterval = setInterval(() => {
       setAnalysisStep((prev) => {
         if (prev < steps.length - 1) return prev + 1;
@@ -117,7 +118,8 @@ export default function DiseaseDetectionPage() {
     }, 600);
 
     try {
-      const data = await analyzeCropImage(selectedFile);
+      const backendLang = getBackendLanguageName();
+      const data = await analyzeCropImage(selectedFile, backendLang);
       clearInterval(stepInterval);
       setResult(data);
     } catch (err: any) {
@@ -135,13 +137,13 @@ export default function DiseaseDetectionPage() {
       <div className="text-center space-y-3">
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
           <Sparkles className="w-4 h-4" />
-          <span>Gemini Vision AI Pathology</span>
+          <span>{t.disease.badge}</span>
         </div>
         <h1 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">
-          Crop Disease <span className="bg-gradient-to-r from-emerald-400 to-teal-200 bg-clip-text text-transparent">Diagnosis</span>
+          {t.disease.title}
         </h1>
         <p className="text-sm sm:text-base text-slate-400 max-w-2xl mx-auto">
-          Upload a clear photo of an affected leaf or plant section to receive instant AI identification, severity analysis, and recommended remedies.
+          {t.disease.subtitle}
         </p>
       </div>
 
@@ -186,10 +188,10 @@ export default function DiseaseDetectionPage() {
             </div>
 
             <h3 className="text-lg font-bold text-white mb-1">
-              Drag & Drop your crop image here
+              {t.disease.uploadBox}
             </h3>
             <p className="text-xs text-slate-400 mb-4">
-              Supports JPG, PNG, WEBP up to 10MB
+              {t.disease.dragDrop}
             </p>
 
             <button
@@ -197,7 +199,7 @@ export default function DiseaseDetectionPage() {
               className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-lg shadow-emerald-600/20 inline-flex items-center gap-2"
             >
               <ImageIcon className="w-4 h-4" />
-              <span>Browse File</span>
+              <span>{t.disease.uploadBtn}</span>
             </button>
           </div>
         ) : (
@@ -228,12 +230,12 @@ export default function DiseaseDetectionPage() {
                 {analyzing ? (
                   <>
                     <RefreshCw className="w-5 h-5 animate-spin" />
-                    <span>Analyzing Image...</span>
+                    <span>{t.disease.analyzing}</span>
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-5 h-5" />
-                    <span>Analyze Crop Health</span>
+                    <span>{t.disease.title}</span>
                   </>
                 )}
               </button>
@@ -243,7 +245,7 @@ export default function DiseaseDetectionPage() {
                 disabled={analyzing}
                 className="w-full sm:w-auto px-6 py-4 rounded-2xl bg-slate-900 text-slate-300 hover:text-white border border-slate-800 font-semibold text-sm"
               >
-                Choose Different Image
+                {t.disease.uploadBtn}
               </button>
             </div>
           </div>
@@ -286,7 +288,7 @@ export default function DiseaseDetectionPage() {
           </div>
 
           <div className="space-y-2 max-w-md mx-auto">
-            <h3 className="text-lg font-bold text-white">AI Visual Pathology in Progress</h3>
+            <h3 className="text-lg font-bold text-white">{t.disease.analyzing}</h3>
             <p className="text-xs text-emerald-400 font-semibold">{steps[analysisStep]}</p>
           </div>
 
@@ -315,7 +317,7 @@ export default function DiseaseDetectionPage() {
                   result.confidence === "Medium" ? "bg-amber-950 text-amber-300 border border-amber-500/30" :
                   "bg-rose-950 text-rose-300 border border-rose-500/30"
                 }`}>
-                  Confidence: {result.confidence}
+                  {t.disease.confidence}: {result.confidence}
                 </span>
               </div>
               <h2 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
@@ -333,7 +335,7 @@ export default function DiseaseDetectionPage() {
                   : "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
               }`}>
                 <ShieldAlert className="w-5 h-5" />
-                <span>Severity: {result.severity}</span>
+                <span>{t.disease.severity}: {result.severity}</span>
               </div>
             </div>
           </div>
@@ -357,7 +359,7 @@ export default function DiseaseDetectionPage() {
               <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
                   <Stethoscope className="w-5 h-5 text-amber-400" />
-                  <span>Visible Symptoms</span>
+                  <span>{t.disease.symptoms}</span>
                 </h3>
                 <ul className="space-y-2.5 text-xs text-slate-300">
                   {result.symptoms.map((symptom, i) => (
@@ -373,7 +375,7 @@ export default function DiseaseDetectionPage() {
               <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
                   <Leaf className="w-5 h-5 text-emerald-400" />
-                  <span>Recommended Remedies</span>
+                  <span>{t.disease.treatment}</span>
                 </h3>
                 <ul className="space-y-2.5 text-xs text-slate-300">
                   {result.treatment.map((item, i) => (
@@ -389,7 +391,7 @@ export default function DiseaseDetectionPage() {
               <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
                   <ShieldCheck className="w-5 h-5 text-teal-400" />
-                  <span>Prevention & Control</span>
+                  <span>{t.disease.prevention}</span>
                 </h3>
                 <ul className="space-y-2.5 text-xs text-slate-300">
                   {result.prevention.map((item, i) => (
@@ -407,13 +409,13 @@ export default function DiseaseDetectionPage() {
           {/* DIAGNOSTIC SUMMARY & EXPERT DISCLAIMER */}
           <div className="pt-4 border-t border-slate-800 space-y-4">
             <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 text-xs text-slate-300">
-              <span className="font-bold text-white block mb-1">Diagnostic Summary:</span>
+              <span className="font-bold text-white block mb-1">{t.disease.resultsTitle}:</span>
               <p>{result.summary}</p>
             </div>
 
             <div className="p-4 rounded-xl bg-slate-950 text-slate-400 text-xs flex items-center gap-3 border border-slate-800">
               <Info className="w-5 h-5 text-emerald-400 shrink-0" />
-              <span>{result.disclaimer}</span>
+              <span>{result.disclaimer || t.disease.disclaimer}</span>
             </div>
           </div>
 
@@ -421,5 +423,13 @@ export default function DiseaseDetectionPage() {
       )}
 
     </div>
+  );
+}
+
+export default function DiseaseDetectionPage() {
+  return (
+    <AuthGuard>
+      <DiseaseDetectionContent />
+    </AuthGuard>
   );
 }
