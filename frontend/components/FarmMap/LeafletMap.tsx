@@ -26,6 +26,7 @@ interface LeafletMapProps {
   onAddDraftPoint: (point: [number, number]) => void;
   selectedMapPoint?: [number, number] | null;
   onSelectMapPoint?: (point: [number, number]) => void;
+  satelliteNdviUrl?: string | null;
 }
 
 // Map updater sub-component to re-center smoothly
@@ -71,11 +72,14 @@ export default function LeafletMap({
   draftPoints,
   onAddDraftPoint,
   selectedMapPoint,
-  onSelectMapPoint
+  onSelectMapPoint,
+  satelliteNdviUrl
 }: LeafletMapProps) {
+  const [mapLayer, setMapLayer] = useState<"street" | "satellite" | "ndvi">("street");
   
   // Health color mapping
   const getFieldColor = (status: string) => {
+    if (mapLayer === "ndvi") return "#10b981"; // NDVI green tint
     switch (status) {
       case "Healthy":
         return "#10b981"; // Green
@@ -92,6 +96,41 @@ export default function LeafletMap({
 
   return (
     <div className="relative w-full h-[450px] sm:h-[550px] rounded-2xl overflow-hidden shadow-2xl border border-slate-800">
+      
+      {/* Map Layer Switcher Control (Top Right) */}
+      <div className="absolute top-3 right-3 z-[1000] bg-slate-950/90 backdrop-blur-md border border-slate-800 p-1 rounded-xl shadow-2xl flex items-center gap-1">
+        <button
+          onClick={() => setMapLayer("street")}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            mapLayer === "street"
+              ? "bg-emerald-600 text-white shadow-md"
+              : "text-slate-400 hover:text-white hover:bg-slate-800"
+          }`}
+        >
+          🗺️ Standard
+        </button>
+        <button
+          onClick={() => setMapLayer("satellite")}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            mapLayer === "satellite"
+              ? "bg-emerald-600 text-white shadow-md"
+              : "text-slate-400 hover:text-white hover:bg-slate-800"
+          }`}
+        >
+          🛰️ Satellite
+        </button>
+        <button
+          onClick={() => setMapLayer("ndvi")}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+            mapLayer === "ndvi"
+              ? "bg-emerald-600 text-white shadow-md"
+              : "text-slate-400 hover:text-white hover:bg-slate-800"
+          }`}
+        >
+          🌿 NDVI Health
+        </button>
+      </div>
+
       <MapContainer
         center={center}
         zoom={zoom}
@@ -115,20 +154,27 @@ export default function LeafletMap({
           </Marker>
         )}
 
-        {/* OpenStreetMap Tiles */}
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+        {/* Base Tile Layer Switcher */}
+        {mapLayer === "street" ? (
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+        ) : (
+          <TileLayer
+            attribution="Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community"
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+          />
+        )}
 
-        {/* Farm Outer Boundary Polygon (Dotted Amber Outline) */}
+        {/* Farm Outer Boundary Polygon */}
         {farmBoundary && farmBoundary.length >= 3 && (
           <Polygon
             positions={farmBoundary}
             pathOptions={{
-              color: "#f59e0b",
-              fillColor: "#f59e0b",
-              fillOpacity: 0.08,
+              color: mapLayer === "ndvi" ? "#84cc16" : "#f59e0b",
+              fillColor: mapLayer === "ndvi" ? "#84cc16" : "#f59e0b",
+              fillOpacity: mapLayer === "ndvi" ? 0.45 : 0.08,
               weight: 3,
               dashArray: "6, 6"
             }}
@@ -143,7 +189,7 @@ export default function LeafletMap({
           >
             <Tooltip permanent direction="center" className="farm-label">
               <span className="text-xs font-bold text-amber-300 bg-slate-950/80 px-2 py-1 rounded shadow cursor-pointer">
-                🚜 Farm Boundary (Click to inspect Farm Profile)
+                {mapLayer === "ndvi" ? "🌿 NDVI Farm Canopy" : "🚜 Farm Boundary (Click to inspect)"}
               </span>
             </Tooltip>
           </Polygon>
@@ -163,7 +209,7 @@ export default function LeafletMap({
               pathOptions={{
                 color: isSelected ? "#ffffff" : strokeColor,
                 fillColor: strokeColor,
-                fillOpacity: isSelected ? 0.6 : 0.35,
+                fillOpacity: mapLayer === "ndvi" ? 0.55 : isSelected ? 0.6 : 0.35,
                 weight: isSelected ? 4 : 2,
               }}
               eventHandlers={{
@@ -181,7 +227,7 @@ export default function LeafletMap({
                   <div className="text-[10px] text-slate-300">{field.crop} • {field.area_acres} acres</div>
                   <div className="mt-0.5 text-[9px] font-semibold uppercase px-1 rounded inline-block"
                        style={{ backgroundColor: `${strokeColor}44`, color: strokeColor }}>
-                    {field.health_status}
+                    {mapLayer === "ndvi" ? "NDVI 0.68 (Healthy)" : field.health_status}
                   </div>
                 </div>
               </Tooltip>

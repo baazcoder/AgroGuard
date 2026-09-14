@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { 
-  ShieldCheck, Leaf, MapPin, TrendingUp, MessageSquare, User, Menu, X, Globe, ChevronDown, LogOut, LogIn, UserPlus, Trash2 
+  ShieldCheck, Leaf, MapPin, TrendingUp, MessageSquare, User, Menu, X, Globe, ChevronDown, LogOut, LogIn, UserPlus, Trash2, Satellite 
 } from "lucide-react";
 import { useLanguage, Language } from "@/context/LanguageContext";
 import { useActiveFarm } from "@/context/ActiveFarmContext";

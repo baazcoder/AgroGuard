@@ -35,13 +35,20 @@ AgroGuard is a production-quality MVP web application built for university hacka
    - Conversational Q&A interface for agricultural queries.
    - Quick prompt chips for fast access to common farmer questions.
 
+7. **My Farm Satellite Monitoring (`/my-farm`)**:
+   - Interactive GIS map for drawing custom farm boundaries (GeoJSON polygons) or picking pre-configured farm locations.
+   - Dual imagery visualizer: High-res Esri World Imagery Satellite True Color overlay & Sentinel-2 NDVI vegetation heatmap.
+   - Sentinel-2 Process API integration calculating real-time NDVI vegetation index score `(NIR - RED) / (NIR + RED)`.
+   - Comprehensive vegetation analytics: Mean, Min, Max NDVI, Farm Health status, Cloud Coverage %, observation timestamp, and risk alerts.
+   - AgroGuard AI Farm Intelligence engine generating tailored farming action items based on satellite observations.
+
 ---
 
 ## 🚀 Tech Stack
 
-- **Frontend**: Next.js 14 (App Router), React, TypeScript, Tailwind CSS v4, Lucide React Icons, Framer Motion.
+- **Frontend**: Next.js 14 (App Router), React, TypeScript, Tailwind CSS v4, Leaflet GIS (`react-leaflet`, `leaflet-draw`), Lucide React Icons, Framer Motion.
 - **Backend**: Python 3.13, FastAPI, Uvicorn, Pydantic v2 schemas, REST API architecture.
-- **AI Engine**: Google Gemini API (`google-genai` SDK & `google-generativeai` fallback).
+- **AI & Remote Sensing Engine**: Google Gemini API (`google-genai` SDK & `google-generativeai` fallback) and Sentinel Hub OAuth Process API.
 
 ---
 
@@ -52,6 +59,8 @@ AgroGuard/
 ├── frontend/                     # Next.js App Router Frontend
 │   ├── app/                      # Next.js Pages & Layouts
 │   │   ├── page.tsx              # Dashboard Page
+│   │   ├── my-farm/              # Satellite Farm Monitoring & Boundary Drawing Page
+│   │   ├── farm-map/             # Interactive Farm Mapping Page
 │   │   ├── disease-detection/    # Crop Disease Detection & Result Page
 │   │   ├── weather/              # Agricultural Weather & Alert Page
 │   │   ├── market/               # Mandi Market Prices Page
@@ -59,7 +68,7 @@ AgroGuard/
 │   │   ├── chat/                 # AI Assistant Chat Page
 │   │   ├── layout.tsx            # Navigation Header & Footer Layout
 │   │   └── globals.css           # Global Styling & Glassmorphic Utilities
-│   ├── components/               # Navbar & Footer Components
+│   ├── components/               # Navbar, Footer & Satellite Map Components
 │   ├── lib/                      # REST API client (`api.ts`)
 │   └── package.json
 │
@@ -67,8 +76,8 @@ AgroGuard/
 │   ├── app/
 │   │   ├── main.py               # FastAPI App & CORS Setup
 │   │   ├── config.py             # Settings Loader
-│   │   ├── routes/               # REST Endpoints (/api/analyze-crop, /api/weather, etc.)
-│   │   ├── services/             # Gemini Vision, Weather & Market Services
+│   │   ├── routes/               # REST Endpoints (/api/analyze-crop, /api/satellite, etc.)
+│   │   ├── services/             # Gemini Vision, Weather, Mandi & Satellite Services
 │   │   ├── schemas/              # Pydantic Response Validation Models
 │   │   └── utils/                # Image Upload File Validator
 │   ├── requirements.txt          # Python Dependencies
@@ -100,13 +109,15 @@ AgroGuard/
    pip install -r requirements.txt
    ```
 
-3. (Optional) Configure Gemini API Key:
+3. (Optional) Configure Gemini & Sentinel Hub API Keys:
    Create a `.env` file inside `backend/` directory:
    ```env
    GEMINI_API_KEY=your_actual_gemini_api_key_here
+   SENTINEL_HUB_CLIENT_ID=your_sentinel_hub_client_id_here
+   SENTINEL_HUB_CLIENT_SECRET=your_sentinel_hub_client_secret_here
    PORT=8000
    ```
-   *Note: If no API key is provided, the backend automatically returns structured demonstration diagnosis data so all UI flows remain fully operational for hackathon judging.*
+   *Note: If Sentinel Hub credentials are unconfigured or if a cloud-free satellite pass is unavailable, the backend automatically enters **Graceful Demo Fallback Mode** with deterministic satellite imagery and vegetation health analytics so all UI flows remain operational.*
 
 4. Launch the FastAPI server:
    ```bash
@@ -141,8 +152,9 @@ AgroGuard/
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/api/health` | Backend status & Gemini API readiness |
+| `GET` | `/api/health` | Backend status & API readiness |
 | `POST` | `/api/analyze-crop` | Upload leaf image for Gemini Vision diagnosis |
+| `POST` | `/api/satellite` | GeoJSON polygon farm satellite NDVI & vegetation health analysis |
 | `GET` | `/api/weather` | Fetch farm microclimate weather & warnings |
 | `GET` | `/api/market` | Fetch regional Mandi commodity prices |
 | `POST` | `/api/crop-advisor` | Receive AI crop planning recommendations |
@@ -153,3 +165,4 @@ AgroGuard/
 ## 🛡️ License
 
 MIT License — Built for Hackathon demonstration.
+

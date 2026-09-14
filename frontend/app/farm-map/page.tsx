@@ -12,10 +12,12 @@ import {
   analyzeCropImage,
   fetchWeather,
   fetchFarmDecisionEngine,
+  analyzeFarmSatellite,
   FarmData,
   FieldData,
   WeatherData,
-  FarmActionPlanResponse
+  FarmActionPlanResponse,
+  SatelliteAnalysisResponse
 } from "@/lib/api";
 import { useLanguage } from "@/context/LanguageContext";
 import { useActiveFarm } from "@/context/ActiveFarmContext";
@@ -30,6 +32,8 @@ function FarmMapContent() {
   const [farm, setFarm] = useState<FarmData | null>(null);
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [decisionPlan, setDecisionPlan] = useState<FarmActionPlanResponse | null>(null);
+  const [satelliteData, setSatelliteData] = useState<SatelliteAnalysisResponse | null>(null);
+  const [analyzingSatellite, setAnalyzingSatellite] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -223,6 +227,53 @@ function FarmMapContent() {
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
+  };
+
+  // Satellite NDVI Analysis Handler
+  const handleAnalyzeSatellite = async () => {
+    try {
+      setAnalyzingSatellite(true);
+      setError(null);
+
+      // Determine polygon coordinates [lon, lat]
+      let geoCoords: [number, number][] = [];
+
+      if (farm?.boundary_coordinates && farm.boundary_coordinates.length >= 3) {
+        // Convert from Leaflet [lat, lon] to GeoJSON [lon, lat]
+        geoCoords = farm.boundary_coordinates.map(([lat, lon]) => [lon, lat]);
+        // Ensure ring is closed
+        const first = geoCoords[0];
+        const last = geoCoords[geoCoords.length - 1];
+        if (first[0] !== last[0] || first[1] !== last[1]) {
+          geoCoords.push([first[0], first[1]]);
+        }
+      } else {
+        // Construct bounding polygon around mapCenter [lat, lon]
+        const [cLat, cLon] = mapCenter;
+        const offset = 0.005;
+        geoCoords = [
+          [cLon - offset, cLat - offset],
+          [cLon + offset, cLat - offset],
+          [cLon + offset, cLat + offset],
+          [cLon - offset, cLat + offset],
+          [cLon - offset, cLat - offset]
+        ];
+      }
+
+      const response = await analyzeFarmSatellite({
+        farm: {
+          type: "Polygon",
+          coordinates: [geoCoords]
+        }
+      });
+
+      setSatelliteData(response);
+    } catch (err: any) {
+      console.error("Satellite analysis failed:", err);
+      setError(err.message || "Failed to analyze farm satellite data.");
+    } finally {
+      setAnalyzingSatellite(false);
+    }
   };
 
   const handleSearchLocation = async (e: React.FormEvent) => {
@@ -578,6 +629,13 @@ function FarmMapContent() {
         <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-end">
           {drawingMode === "none" ? (
             <>
+              <button
+                onClick={handleAnalyzeSatellite}
+                disabled={analyzingSatellite}
+                className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-md transition flex items-center gap-1.5"
+              >
+                <span>🛰️ {analyzingSatellite ? "Fetching Satellite..." : "Satellite NDVI Analysis"}</span>
+              </button>
               <button
                 onClick={handleStartDrawFarm}
                 className="bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 text-xs font-semibold px-3.5 py-2 rounded-xl transition flex items-center gap-1.5"
@@ -1056,6 +1114,119 @@ function FarmMapContent() {
           </div>
         </div>
       </div>
+
+      {/* Satellite Farm Monitoring Intelligence Card */}
+      {satelliteData && (
+        <div className="bg-slate-900/90 border border-emerald-500/40 rounded-3xl p-6 shadow-2xl space-y-5 animate-in fade-in duration-300">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">🛰️</span>
+                <h3 className="text-xl font-extrabold text-white">Satellite Farm Health & NDVI Report</h3>
+                {satelliteData.is_demo && (
+                  <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    Demo Data
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                Sentinel-2 satellite observation • Captured on {satelliteData.observation_date} • Cloud coverage: {satelliteData.cloud_coverage}%
+              </p>
+            </div>
+
+            <button
+              onClick={() => setSatelliteData(null)}
+              className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+            >
+              Close Report ✕
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Visualizer Heatmap & True Color */}
+            <div className="space-y-3">
+              <span className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
+                📷 Satellite Spectral Layers
+              </span>
+              <div className="grid grid-cols-2 gap-2">
+                {satelliteData.true_color_url && (
+                  <div className="bg-slate-950 p-2 rounded-2xl border border-slate-800 text-center">
+                    <img
+                      src={satelliteData.true_color_url}
+                      alt="Sentinel True Color"
+                      className="w-full h-32 object-cover rounded-xl"
+                    />
+                    <span className="text-[10px] font-semibold text-slate-400 mt-1 block">True Color (RGB)</span>
+                  </div>
+                )}
+                {satelliteData.ndvi_map_url && (
+                  <div className="bg-slate-950 p-2 rounded-2xl border border-slate-800 text-center">
+                    <img
+                      src={satelliteData.ndvi_map_url}
+                      alt="Sentinel NDVI Heatmap"
+                      className="w-full h-32 object-cover rounded-xl"
+                    />
+                    <span className="text-[10px] font-semibold text-emerald-400 mt-1 block">NDVI Heatmap</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* NDVI Metrics & Risk */}
+            <div className="space-y-3">
+              <span className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
+                🌿 Vegetation Index Analytics
+              </span>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-slate-950/80 p-3 rounded-2xl border border-slate-800 text-center">
+                  <span className="text-[10px] text-slate-500 block">Mean NDVI</span>
+                  <span className="text-lg font-bold text-emerald-400">{satelliteData.ndvi.mean}</span>
+                </div>
+                <div className="bg-slate-950/80 p-3 rounded-2xl border border-slate-800 text-center">
+                  <span className="text-[10px] text-slate-500 block">Min NDVI</span>
+                  <span className="text-lg font-bold text-amber-400">{satelliteData.ndvi.min}</span>
+                </div>
+                <div className="bg-slate-950/80 p-3 rounded-2xl border border-slate-800 text-center">
+                  <span className="text-[10px] text-slate-500 block">Max NDVI</span>
+                  <span className="text-lg font-bold text-cyan-400">{satelliteData.ndvi.max}</span>
+                </div>
+              </div>
+
+              <div className="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-slate-400 block text-[10px]">Vegetation Health Status</span>
+                  <span className="text-sm font-bold text-emerald-300">{satelliteData.vegetation_health}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-slate-400 block text-[10px]">Farm Stress Risk</span>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
+                    satelliteData.risk_level === "Low"
+                      ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                      : satelliteData.risk_level === "Moderate"
+                      ? "bg-amber-500/20 text-amber-400 border-amber-500/30"
+                      : "bg-red-500/20 text-red-400 border-red-500/30"
+                  }`}>
+                    {satelliteData.risk_level} Risk
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* AI AgroGuard Interpretation */}
+            <div className="space-y-3">
+              <span className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
+                ⚡ AgroGuard Intelligence Summary
+              </span>
+              <div className="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 text-xs text-slate-300 leading-relaxed h-[calc(100%-24px)] flex flex-col justify-between">
+                <p>"{satelliteData.message}"</p>
+                <div className="pt-2 border-t border-slate-800 text-[11px] text-emerald-400 font-semibold">
+                  💡 Recommendation: Photosynthetic activity is healthy. Maintain regular nitrogen fertilizer and irrigation cycle.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal for Creating New Field Plot */}
       {showFieldModal && (

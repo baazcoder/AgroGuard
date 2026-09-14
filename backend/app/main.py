@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db.database import engine, Base
 from app.db import models
-from app.routes import analyze, weather, market, advisor, chat, profile, economics, decision, farms, auth
+from app.routes import analyze, weather, market, advisor, chat, profile, economics, decision, farms, auth, satellite
 
 from sqlalchemy import inspect, text
 
@@ -70,6 +70,7 @@ app.include_router(weather.router)
 app.include_router(market.router)
 app.include_router(advisor.router)
 app.include_router(chat.router)
+app.include_router(satellite.router)
 
 
 @app.get("/api/health")
