@@ -1,10 +1,15 @@
+import logging
 from fastapi import APIRouter, Query, Depends
 from typing import Optional
 from sqlalchemy.orm import Session
 from app.db.database import get_db
+from app.db.auth_deps import get_optional_current_user
+from app.db.models import User
 from app.services.market_service import get_market_prices, get_market_intelligence
 from app.services import active_farm_service, profile_service
 from app.schemas.market import MarketResponse, MarketIntelligenceResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["Market & Mandi Prices"])
 
@@ -13,18 +18,21 @@ async def fetch_market_prices(
     crop: Optional[str] = Query(None, description="Filter by crop name"),
     state: Optional[str] = Query(None, description="Filter by state name"),
     farm_id: Optional[int] = Query(None, description="Active Farm ID"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user)
 ):
     """
     Get Mandi market commodity prices ranked by active farm coordinates.
     """
+    f_id = current_user.id if current_user else 1
     farm_ctx = None
     try:
-        active_farm_ctx = active_farm_service.get_active_farm_context(db, farm_id=farm_id)
+        active_farm_ctx = await active_farm_service.get_active_farm_context(db, farm_id=farm_id, farmer_id=f_id)
         if active_farm_ctx:
             farm_ctx = active_farm_ctx.model_dump()
-    except Exception:
-        farm_ctx = profile_service.get_farmer_context(db)
+    except Exception as e:
+        logger.error(f"Failed to get active farm context for market prices: {e}")
+        farm_ctx = profile_service.get_farmer_context(db, user_id=f_id)
 
     return await get_market_prices(crop_filter=crop, state_filter=state, farm_context=farm_ctx)
 
@@ -34,21 +42,24 @@ async def fetch_market_intelligence(
     state: Optional[str] = Query(None, description="Filter by state name"),
     farm_id: Optional[int] = Query(None, description="Active Farm ID"),
     force_unavailable: bool = Query(False, description="Simulate offline / API failure state"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_current_user)
 ):
     """
     Get Market Intelligence report: proximity-ranked nearby mandis, 7-day price trends, and AI market insight.
     """
+    f_id = current_user.id if current_user else 1
     farm_ctx = None
     try:
-        active_farm_ctx = active_farm_service.get_active_farm_context(db, farm_id=farm_id)
+        active_farm_ctx = await active_farm_service.get_active_farm_context(db, farm_id=farm_id, farmer_id=f_id)
         if active_farm_ctx:
             farm_ctx = active_farm_ctx.model_dump()
-    except Exception:
-        farm_ctx = profile_service.get_farmer_context(db)
+    except Exception as e:
+        logger.error(f"Failed to get active farm context for market intelligence: {e}")
+        farm_ctx = profile_service.get_farmer_context(db, user_id=f_id)
 
     if not farm_ctx:
-        farm_ctx = profile_service.get_farmer_context(db)
+        farm_ctx = profile_service.get_farmer_context(db, user_id=f_id)
 
     return await get_market_intelligence(
         crop_filter=crop,

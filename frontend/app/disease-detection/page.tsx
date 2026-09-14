@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import { 
   Upload, Image as ImageIcon, X, Sparkles, AlertCircle, ShieldAlert, 
@@ -37,6 +37,21 @@ function DiseaseDetectionContent() {
   const [isDragOver, setIsDragOver] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedDiag = sessionStorage.getItem("latest_diagnosis");
+      if (savedDiag) {
+        try {
+          const parsed = JSON.parse(savedDiag);
+          setResult(parsed);
+          sessionStorage.removeItem("latest_diagnosis");
+        } catch (e) {
+          console.error("Failed to parse saved diagnosis:", e);
+        }
+      }
+    }
+  }, []);
 
   const steps = [
     "Uploading Crop Image to Secure Endpoint...",

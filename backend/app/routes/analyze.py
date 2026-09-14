@@ -32,15 +32,31 @@ async def analyze_crop(
     farmer_ctx = profile_service.get_farmer_context(db)
     req_language = language or farmer_ctx.get("language", "English")
 
+    field_crop = None
+    growth_stage = farmer_ctx.get("growth_stage")
+    soil_type = farmer_ctx.get("soil_type")
+
+    if field_id:
+        from app.db.models import Field as FieldModel
+        f_obj = db.query(FieldModel).filter(FieldModel.id == field_id).first()
+        if f_obj:
+            field_crop = f_obj.crop
+            if f_obj.growth_stage:
+                growth_stage = f_obj.growth_stage
+            if f_obj.soil_type:
+                soil_type = f_obj.soil_type
+
+    target_crop = field_crop or farmer_ctx.get("current_crop") or farmer_ctx.get("crop")
+
     result = await analyze_crop_image(
         image_bytes=image_bytes,
         mime_type=mime_type,
-        crop=farmer_ctx.get("current_crop"),
+        crop=target_crop,
         location=farmer_ctx.get("location"),
         land_area=farmer_ctx.get("land_area"),
         land_unit=farmer_ctx.get("land_unit"),
-        soil_type=farmer_ctx.get("soil_type"),
-        growth_stage=farmer_ctx.get("growth_stage"),
+        soil_type=soil_type,
+        growth_stage=growth_stage,
         language=req_language
     )
 

@@ -77,6 +77,7 @@ function FarmMapContent() {
   // Image Upload for Selected Field
   const [uploadingImage, setUploadingImage] = useState<boolean>(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [scanMessage, setScanMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Helper: Load weather forecast & AI decision engine plan for a given map location
@@ -365,6 +366,7 @@ function FarmMapContent() {
     try {
       setUploadingImage(true);
       setUploadError(null);
+      setScanMessage(null);
 
       // Perform AI diagnosis and pass selectedField.id
       const diag = await analyzeCropImage(file, language === "hi" ? "Hindi" : "English", selectedField.id);
@@ -377,12 +379,25 @@ function FarmMapContent() {
       const updatedF = updatedFarm.fields.find((f) => f.id === selectedField.id);
       if (updatedF) setSelectedField(updatedF);
 
-      alert(`Diagnosis complete! Result '${diag.disease}' associated with ${selectedField.name}.`);
+      const dName = (diag.disease || "").toLowerCase();
+      const isProblem = !diag.is_uncertain && dName !== "healthy" && dName !== "no disease" && dName !== "healthy plant" && diag.severity !== "None";
+
+      if (isProblem) {
+        // Crop disease / problem detected -> redirect to full disease scan page
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem("latest_diagnosis", JSON.stringify(diag));
+        }
+        router.push("/disease-detection");
+      } else {
+        // Crop is healthy -> Stay on farm map & show positive confirmation banner
+        setScanMessage(`✅ Leaf Scan Complete: Crop in ${selectedField.name} is Healthy! No disease detected.`);
+      }
     } catch (err: any) {
       console.error("Failed image analysis:", err);
       setUploadError(err.message || "Failed to analyze crop image.");
     } finally {
       setUploadingImage(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -741,6 +756,21 @@ function FarmMapContent() {
                     <div>Revenue: <strong className="text-emerald-400">₹{selectedField.economics_summary.gross_revenue.toLocaleString()}</strong></div>
                     <div>Est. Margin: <strong className="text-emerald-400">₹{selectedField.economics_summary.estimated_margin.toLocaleString()}</strong></div>
                   </div>
+                </div>
+              )}
+
+              {/* Scan Feedback Banner */}
+              {scanMessage && (
+                <div className="p-3 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex items-center justify-between">
+                  <span>{scanMessage}</span>
+                  <button onClick={() => setScanMessage(null)} className="text-slate-400 hover:text-white">✕</button>
+                </div>
+              )}
+
+              {uploadError && (
+                <div className="p-3 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs font-semibold flex items-center justify-between">
+                  <span>⚠️ {uploadError}</span>
+                  <button onClick={() => setUploadError(null)} className="text-slate-400 hover:text-white">✕</button>
                 </div>
               )}
 

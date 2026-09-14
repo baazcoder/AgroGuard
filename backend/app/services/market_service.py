@@ -381,8 +381,17 @@ async def get_market_intelligence(
     try:
         raw_items = _get_raw_market_items()
         
-        target_crop = crop_filter or context.get("crop") or context.get("current_crop")
-        target_state = state_filter or context.get("state")
+        target_crop = crop_filter
+        if not target_crop and context.get("crop"):
+            ctx_c = str(context.get("crop")).strip().lower()
+            if ctx_c not in ["no crop mapped", "unassigned crop", "none", "null", "unknown", ""]:
+                target_crop = context.get("crop")
+
+        target_state = state_filter
+        if not target_state and context.get("state"):
+            ctx_s = str(context.get("state")).strip().lower()
+            if ctx_s not in ["none", "null", ""]:
+                target_state = context.get("state")
 
         processed_items = _process_and_sort_market_items(
             raw_items=raw_items,
